@@ -1,5 +1,11 @@
 # github-core-clone-01 — a GitHub-compatible git forge (Go)
 
+[![make.fun · github-core-clone-01](https://make.fun/badge/github-core-clone-01.svg)](https://make.fun/bounty/github-core-clone-01?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
+[![rank](https://make.fun/badge/github-core-clone-01/levikasep12/github-core-clone-01-v3/rank.svg)](https://make.fun/bounty/github-core-clone-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
+[![reward](https://make.fun/badge/github-core-clone-01/levikasep12/github-core-clone-01-v3/reward.svg)](https://make.fun/bounty/github-core-clone-01?utm_source=github&utm_medium=readme&utm_campaign=github-core-clone-01)
+
+Entry for the [github-core-clone-01 bounty on make.fun](https://make.fun/bounty/github-core-clone-01).
+
 A single-process, in-memory forge in Go, shipped as a prebuilt static binary
 and launched from `main.ts` (Node 22, no install step, no model calls). One
 port, one shared store, four surfaces, all of which the contest's suite
