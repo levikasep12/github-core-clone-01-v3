@@ -1,8 +1,9 @@
-# github-core-clone-01 — a GitHub-compatible git forge
+# github-core-clone-01 — a GitHub-compatible git forge (Go)
 
-A single-process, in-memory forge in erasable TypeScript (Node 22, standard library
-only — no install step, no model calls). One port, one shared store, four surfaces,
-all of which the contest's suite exercises:
+A single-process, in-memory forge in Go, shipped as a prebuilt static binary
+and launched from `main.ts` (Node 22, no install step, no model calls). One
+port, one shared store, four surfaces, all of which the contest's suite
+exercises:
 
 - **Git smart HTTP** (`/{owner}/{repo}.git`): protocol v2 `ls-refs` / `fetch` and v0
   `upload-pack`; v0 `receive-pack` with report-status and fast-forward enforcement;
@@ -22,41 +23,51 @@ all of which the contest's suite exercises:
 
 | file | contents |
 | --- | --- |
-| `main.ts` | entrypoint: bind, register with the trial, poll for done, exit 0 |
-| `app.ts` | the HTTP server: routing, bearer auth, request ids, body fast paths |
-| `store.ts` | the store: git objects and refs, issues, pulls, Relay ids, versioning |
-| `scenario.ts` | re-derives the token owner's login from the scenario seed |
-| `gitproto.ts` | pkt-lines, packfiles, v0/v2 upload-pack, receive-pack, pack caches |
-| `http.ts` | shared request/response shapes and JSON helpers |
-| `rest.ts` | the REST v3 routes and the shared domain operations |
-| `graphql.ts` | a small GraphQL lexer, parser and executor |
-| `mcp.ts` | the MCP JSON-RPC dispatcher and the six tools |
+| `main.ts` | entrypoint: pick the binary for this architecture, spawn it, exit with its code |
+| `forge-linux-amd64` | the compiled forge for x86-64 Linux (static, no libc) |
+| `forge-linux-arm64` | the compiled forge for arm64 Linux (static, no libc) |
+| `go/main.go` | entry lifecycle: bind, register with the trial, poll for done, exit 0 |
+| `go/app.go` | the HTTP server: routing, bearer auth, request ids, read/write locking |
+| `go/store.go` | the store: git objects and refs, issues, pulls, Relay ids, versioning |
+| `go/scenario.go` | re-derives the token owner's login from the scenario seed |
+| `go/gitproto.go` | pkt-lines, packfiles, v0/v2 upload-pack, receive-pack, pack caches |
+| `go/http.go` | shared request/response shapes and JSON helpers |
+| `go/rest.go` | the REST v3 routes and the shared domain operations |
+| `go/graphql.go` | a small GraphQL lexer, parser and executor |
+| `go/mcp.go` | the MCP JSON-RPC dispatcher and the six tools |
+
+Rebuild the binaries with `npm run build` (needs a Go toolchain; the checked-in
+binaries are what the trial runs).
 
 ## Why it is fast
 
-The perf grade is a geometric mean over push, clone, read and write, so the hot
-paths are kept lean: whole-response caches for fetch / ls-refs / advertisements,
-keyed by the store version so a mutation can never leave a stale answer behind;
-packs that carry each object's id with it, so the writer never re-hashes to sort
-or dedupe; a deflate cache keyed by object id (deflate output is a pure function
-of the bytes); a direct read path for delta-free packs; JSON parsing skipped on
-git paths; and bodies never streamed when a request has none. Nothing here is
-tuned to a practice instance — every shortcut holds for any repository the final
-trial builds.
+The perf grade is a geometric mean over push, clone, read and write. The Go
+port keeps the v2 caching — whole-response caches for fetch / ls-refs /
+advertisements, keyed by the store version so a mutation can never leave a
+stale answer behind; packs that carry each object's id with it, so the writer
+never re-hashes to sort or dedupe; a deflate cache keyed by object id; a
+direct read path for delta-free packs; JSON parsing skipped on git paths — and
+adds what the interpreted server could not: the store lives behind one RWMutex,
+so reads (every GET, plus the upload-pack POSTs that only ever read) run
+concurrently across every CPU the pod offers, while the fifty simultaneous
+clones of the clone workload used to queue behind one event loop. Nothing here
+is tuned to a practice instance — every shortcut holds for any repository the
+final trial builds.
 
 ## Determinism
 
 A trial is replayed and the state export must come out byte-identical, so the
 forge never reads the wall clock or unseeded randomness: commit timestamps sit
 on a fixed epoch, REST dates are a fixed ISO string, request ids count up from 1,
-pack object order is sorted, and the server sends no `Date` header. The token
-owner's login is re-derived from the fixed scenario seed, so the same suite run
-always sees the same `adaiversen`.
+pack object order is sorted, and the server sends a constant `Date` header. The
+token owner's login is re-derived from the fixed scenario seed, so the same
+suite run always sees the same `adaiversen`.
 
 ## Running it
 
 ```sh
 node --experimental-strip-types main.ts   # in a trial, with MAKEFUN_ENV_URL set
+FORGE_PORT=18723 node --experimental-strip-types main.ts   # local smoke run
 ```
 
 Against a locally started server, the kit's conformance runner:
@@ -65,6 +76,8 @@ Against a locally started server, the kit's conformance runner:
 node --experimental-strip-types sdk/run.ts --url http://127.0.0.1:PORT --token TOK --perf
 ```
 
-Local conformance (2026-11-15): **120/120 checks**, score 991–997/1000
-(feature 600, agent 200, perf 191–197); p50 varies with ambient CPU load, roughly
-170–210 µs in the local harness.
+Local conformance (2026-11-18): **120/120 checks** on every run, score
+977–997/1000 (feature 600, agent 200, perf 177–197); p50 178,000–244,000 µs
+across seven runs (mean ~195,000 µs), against the v2 TypeScript entry's
+205,000–242,000 µs (mean ~220,000 µs) on the same VM — the gain is in push
+(~19% faster) and clone (~28% faster); read and write are unchanged.
